@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
       - name: weather-app
-        image: weather-app:preprod
+        image: weather-app
         resources:
           requests:
             memory: "64Mi"

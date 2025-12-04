@@ -22,5 +22,5 @@ commonLabels:
 
 images:
   - name: weather-app
-    newName: your-registry/weather-app
+    newName: weather-app
     newTag: preprod
