@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Météo France - Application Kubernetes</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>☀️ Météo France</h1>
+            <p class="subtitle">Application déployée sur Kubernetes</p>
+        </header>
+
+        <div class="search-section">
+            <h2>Sélectionnez une ville</h2>
+            <div class="cities-grid">
+                {% for ville in villes %}
+                <button class="city-btn" onclick="getWeather('{{ ville }}')">
+                    {{ ville }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="weather-result" class="weather-card hidden">
+            <h2 id="city-name"></h2>
+            <div class="weather-main">
+                <img id="weather-icon" src="" alt="Icône météo">
+                <div class="temperature">
+                    <span id="temp" class="temp-value"></span>
+                    <span class="temp-unit">°C</span>
+                </div>
+            </div>
+            <p id="description" class="description"></p>
+            <div class="weather-details">
+                <div class="detail">
+                    <span class="label">Ressenti</span>
+                    <span id="feels-like" class="value"></span>
+                </div>
+                <div class="detail">
+                    <span class="label">Humidité</span>
+                    <span id="humidity" class="value"></span>
+                </div>
+                <div class="detail">
+                    <span class="label">Vent</span>
+                    <span id="wind" class="value"></span>
+                </div>
+            </div>
+            <p id="timestamp" class="timestamp"></p>
+        </div>
+
+        <div id="error-message" class="error hidden"></div>
+
+        <footer>
+            <p>Powered by OpenWeatherMap API</p>
+        </footer>
+    </div>
+
+    <script>
+        async function getWeather(city) {
+            const resultDiv = document.getElementById('weather-result');
+            const errorDiv = document.getElementById('error-message');
+            
+            // Masquer les messages précédents
+            resultDiv.classList.add('hidden');
+            errorDiv.classList.add('hidden');
+            
+            // Afficher un état de chargement
+            const buttons = document.querySelectorAll('.city-btn');
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                const response = await fetch(`/meteo/${encodeURIComponent(city)}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayWeather(data);
+                } else {
+                    showError('Impossible de récupérer la météo pour cette ville');
+                }
+            } catch (error) {
+                showError('Erreur de connexion au serveur');
+            } finally {
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+        
+        function displayWeather(data) {
+            document.getElementById('city-name').textContent = data.ville;
+            document.getElementById('temp').textContent = data.temperature;
+            document.getElementById('description').textContent = data.description;
+            document.getElementById('feels-like').textContent = data.ressenti + '°C';
+            document.getElementById('humidity').textContent = data.humidite + '%';
+            document.getElementById('wind').textContent = data.vent + ' km/h';
+            document.getElementById('timestamp').textContent = 'Mis à jour à ' + data.timestamp;
+            
+            const iconUrl = `http://openweathermap.org/img/wn/${data.icon}@2x.png`;
+            document.getElementById('weather-icon').src = iconUrl;
+            
+            document.getElementById('weather-result').classList.remove('hidden');
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
