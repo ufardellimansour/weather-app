@@ -4,7 +4,7 @@ replicaCount: 3
 environment: production
 
 image:
-  repository: registry.gitlab.com/votre-namespace/weather-app/backend
+  repository: ghcr.io/votre-username/weather-app
   pullPolicy: IfNotPresent
   tag: "latest"
 

@@ -9,7 +9,9 @@ environment: production
 
 image:
   # Repository de l'image Docker
-  repository: registry.gitlab.com/votre-namespace/weather-app/backend
+  # Pour GitHub: ghcr.io/votre-username/weather-app
+  # Pour GitLab: registry.gitlab.com/votre-namespace/weather-app/backend
+  repository: ghcr.io/votre-username/weather-app
   # Pull policy
   pullPolicy: IfNotPresent
   # Tag de l'image (override par CI/CD)
