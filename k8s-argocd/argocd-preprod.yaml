@@ -6,7 +6,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: weather-app
   
   source:
     repoURL: https://github.com/ufardellimansour/weather-app.git  # Remplacez par votre repo
