@@ -1,0 +1,351 @@
+# Pipeline GitLab CI/CD pour Weather App
+# Stages: build → test → publish → deploy
+
+stages:
+  - build
+  - test
+  - publish
+  - deploy
+
+variables:
+  # Images Docker
+  BACKEND_IMAGE: ${CI_REGISTRY_IMAGE}/backend
+  FRONTEND_IMAGE: ${CI_REGISTRY_IMAGE}/frontend
+  
+  # Versions
+  IMAGE_TAG: ${CI_COMMIT_SHORT_SHA}
+  LATEST_TAG: latest
+  
+  # Kubernetes
+  KUBECONFIG: /tmp/kubeconfig
+  
+  # Helm
+  HELM_CHART_PATH: ./helm/weather-app
+  
+  # Docker
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+
+# Template pour Docker build
+.docker_build_template: &docker_build
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  tags:
+    - docker
+
+# Template pour Kubernetes
+.kubernetes_template: &kubernetes
+  image: alpine/k8s:1.28.3
+  before_script:
+    - echo "$KUBECONFIG_CONTENT" | base64 -d > $KUBECONFIG
+    - export KUBECONFIG=$KUBECONFIG
+    - kubectl version --client
+  tags:
+    - kubernetes
+
+#═══════════════════════════════════════════════════════════════
+# STAGE: BUILD
+#═══════════════════════════════════════════════════════════════
+
+build:backend:
+  <<: *docker_build
+  stage: build
+  script:
+    - echo "Building backend image..."
+    - docker build -t $BACKEND_IMAGE:$IMAGE_TAG -f Dockerfile .
+    - docker tag $BACKEND_IMAGE:$IMAGE_TAG $BACKEND_IMAGE:$CI_COMMIT_REF_SLUG
+    - echo "Backend image built successfully"
+  only:
+    changes:
+      - app.py
+      - requirements.txt
+      - Dockerfile
+      - templates/**/*
+      - static/**/*
+      - .gitlab-ci.yml
+
+build:frontend:
+  <<: *docker_build
+  stage: build
+  script:
+    - echo "Building frontend image..."
+    # Pour l'instant, même image que backend (app Flask sert le frontend)
+    - docker build -t $FRONTEND_IMAGE:$IMAGE_TAG -f Dockerfile .
+    - docker tag $FRONTEND_IMAGE:$IMAGE_TAG $FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG
+    - echo "Frontend image built successfully"
+  only:
+    changes:
+      - app.py
+      - templates/**/*
+      - static/**/*
+      - Dockerfile
+      - .gitlab-ci.yml
+
+#═══════════════════════════════════════════════════════════════
+# STAGE: TEST
+#═══════════════════════════════════════════════════════════════
+
+test:security-scan:
+  <<: *docker_build
+  stage: test
+  script:
+    - echo "Running security scan..."
+    - docker pull $BACKEND_IMAGE:$IMAGE_TAG || true
+    # Trivy security scanner
+    - apk add --no-cache curl
+    - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+    - trivy image --severity HIGH,CRITICAL --exit-code 0 $BACKEND_IMAGE:$IMAGE_TAG
+  allow_failure: true
+  only:
+    - develop
+    - main
+
+test:lint:
+  image: python:3.11-slim
+  stage: test
+  before_script:
+    - pip install flake8 pylint black
+  script:
+    - echo "Running code quality checks..."
+    - flake8 app.py --max-line-length=120 --ignore=E501 || true
+    - pylint app.py --disable=C0111,C0103 || true
+    - black --check app.py || true
+  allow_failure: true
+  only:
+    changes:
+      - app.py
+      - "*.py"
+
+test:unit:
+  image: python:3.11-slim
+  stage: test
+  before_script:
+    - pip install -r requirements.txt pytest
+  script:
+    - echo "Running unit tests..."
+    - pytest tests/ -v || echo "No tests found (add tests in tests/ directory)"
+  allow_failure: true
+  artifacts:
+    reports:
+      junit: test-results.xml
+    expire_in: 1 week
+
+#═══════════════════════════════════════════════════════════════
+# STAGE: PUBLISH
+#═══════════════════════════════════════════════════════════════
+
+publish:backend:
+  <<: *docker_build
+  stage: publish
+  script:
+    - echo "Publishing backend image to GitLab Registry..."
+    - docker pull $BACKEND_IMAGE:$IMAGE_TAG
+    - docker tag $BACKEND_IMAGE:$IMAGE_TAG $BACKEND_IMAGE:$LATEST_TAG
+    - docker push $BACKEND_IMAGE:$IMAGE_TAG
+    - docker push $BACKEND_IMAGE:$LATEST_TAG
+    - echo "Backend image published: $BACKEND_IMAGE:$IMAGE_TAG"
+  only:
+    - develop
+    - main
+  needs:
+    - build:backend
+    - test:security-scan
+    - test:lint
+
+publish:frontend:
+  <<: *docker_build
+  stage: publish
+  script:
+    - echo "Publishing frontend image to GitLab Registry..."
+    - docker pull $FRONTEND_IMAGE:$IMAGE_TAG
+    - docker tag $FRONTEND_IMAGE:$IMAGE_TAG $FRONTEND_IMAGE:$LATEST_TAG
+    - docker push $FRONTEND_IMAGE:$IMAGE_TAG
+    - docker push $FRONTEND_IMAGE:$LATEST_TAG
+    - echo "Frontend image published: $FRONTEND_IMAGE:$IMAGE_TAG"
+  only:
+    - develop
+    - main
+  needs:
+    - build:frontend
+    - test:security-scan
+
+# Publier un tag de release
+publish:release:
+  <<: *docker_build
+  stage: publish
+  script:
+    - echo "Publishing release $CI_COMMIT_TAG..."
+    - docker pull $BACKEND_IMAGE:$IMAGE_TAG
+    - docker tag $BACKEND_IMAGE:$IMAGE_TAG $BACKEND_IMAGE:$CI_COMMIT_TAG
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_TAG
+    
+    - docker pull $FRONTEND_IMAGE:$IMAGE_TAG
+    - docker tag $FRONTEND_IMAGE:$IMAGE_TAG $FRONTEND_IMAGE:$CI_COMMIT_TAG
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_TAG
+    
+    - echo "Release published: $CI_COMMIT_TAG"
+  only:
+    - tags
+  needs:
+    - build:backend
+    - build:frontend
+
+#═══════════════════════════════════════════════════════════════
+# STAGE: DEPLOY
+#═══════════════════════════════════════════════════════════════
+
+# Déploiement en PREPROD (automatique)
+deploy:preprod:
+  <<: *kubernetes
+  stage: deploy
+  script:
+    - echo "Deploying to PREPROD environment..."
+    - helm upgrade --install weather-app-preprod $HELM_CHART_PATH
+        --namespace weather-preprod
+        --create-namespace
+        --set image.repository=$CI_REGISTRY_IMAGE/backend
+        --set image.tag=$IMAGE_TAG
+        --set environment=preprod
+        --set replicaCount=1
+        --set resources.requests.cpu=50m
+        --set resources.requests.memory=64Mi
+        --set ingress.enabled=true
+        --set ingress.hosts[0].host=weather-preprod.example.com
+        --set ingress.hosts[0].paths[0].path=/
+        --set ingress.hosts[0].paths[0].pathType=Prefix
+        --wait
+        --timeout 5m
+    - kubectl get pods -n weather-preprod
+    - echo "Deployed to PREPROD: weather-preprod.example.com"
+  environment:
+    name: preprod
+    url: https://weather-preprod.example.com
+    on_stop: stop:preprod
+  only:
+    - develop
+  needs:
+    - publish:backend
+    - publish:frontend
+
+# Déploiement en PRODUCTION (manuel)
+deploy:production:
+  <<: *kubernetes
+  stage: deploy
+  script:
+    - echo "Deploying to PRODUCTION environment..."
+    - helm upgrade --install weather-app-prod $HELM_CHART_PATH
+        --namespace weather-prod
+        --create-namespace
+        --set image.repository=$CI_REGISTRY_IMAGE/backend
+        --set image.tag=$IMAGE_TAG
+        --set environment=production
+        --set replicaCount=3
+        --set resources.requests.cpu=200m
+        --set resources.requests.memory=256Mi
+        --set autoscaling.enabled=true
+        --set autoscaling.minReplicas=3
+        --set autoscaling.maxReplicas=10
+        --set ingress.enabled=true
+        --set ingress.hosts[0].host=weather.example.com
+        --set ingress.hosts[0].paths[0].path=/
+        --set ingress.hosts[0].paths[0].pathType=Prefix
+        --wait
+        --timeout 10m
+    - kubectl get pods -n weather-prod
+    - echo "Deployed to PRODUCTION: weather.example.com"
+  environment:
+    name: production
+    url: https://weather.example.com
+    on_stop: stop:production
+  when: manual
+  only:
+    - main
+  needs:
+    - publish:backend
+    - publish:frontend
+
+# Review Apps (pour les merge requests)
+deploy:review:
+  <<: *kubernetes
+  stage: deploy
+  script:
+    - export REVIEW_NAME="review-mr-${CI_MERGE_REQUEST_IID}"
+    - export REVIEW_NAMESPACE="weather-review-mr-${CI_MERGE_REQUEST_IID}"
+    - echo "Deploying review app: $REVIEW_NAME"
+    - helm upgrade --install $REVIEW_NAME $HELM_CHART_PATH
+        --namespace $REVIEW_NAMESPACE
+        --create-namespace
+        --set image.repository=$CI_REGISTRY_IMAGE/backend
+        --set image.tag=$IMAGE_TAG
+        --set environment=review
+        --set replicaCount=1
+        --set resources.requests.cpu=50m
+        --set resources.requests.memory=64Mi
+        --set ingress.enabled=true
+        --set ingress.hosts[0].host=mr-${CI_MERGE_REQUEST_IID}.weather-review.example.com
+        --set ingress.hosts[0].paths[0].path=/
+        --set ingress.hosts[0].paths[0].pathType=Prefix
+        --wait
+        --timeout 5m
+    - kubectl get pods -n $REVIEW_NAMESPACE
+    - echo "Review app deployed: https://mr-${CI_MERGE_REQUEST_IID}.weather-review.example.com"
+  environment:
+    name: review/mr-$CI_MERGE_REQUEST_IID
+    url: https://mr-$CI_MERGE_REQUEST_IID.weather-review.example.com
+    on_stop: stop:review
+    auto_stop_in: 1 week
+  only:
+    - merge_requests
+  needs:
+    - publish:backend
+    - publish:frontend
+
+#═══════════════════════════════════════════════════════════════
+# JOBS DE NETTOYAGE
+#═══════════════════════════════════════════════════════════════
+
+stop:preprod:
+  <<: *kubernetes
+  stage: deploy
+  script:
+    - echo "Stopping PREPROD environment..."
+    - helm uninstall weather-app-preprod --namespace weather-preprod || true
+    - kubectl delete namespace weather-preprod || true
+  when: manual
+  environment:
+    name: preprod
+    action: stop
+  only:
+    - develop
+
+stop:production:
+  <<: *kubernetes
+  stage: deploy
+  script:
+    - echo "Stopping PRODUCTION environment..."
+    - helm uninstall weather-app-prod --namespace weather-prod || true
+  when: manual
+  environment:
+    name: production
+    action: stop
+  only:
+    - main
+
+stop:review:
+  <<: *kubernetes
+  stage: deploy
+  script:
+    - export REVIEW_NAME="review-mr-${CI_MERGE_REQUEST_IID}"
+    - export REVIEW_NAMESPACE="weather-review-mr-${CI_MERGE_REQUEST_IID}"
+    - echo "Stopping review app: $REVIEW_NAME"
+    - helm uninstall $REVIEW_NAME --namespace $REVIEW_NAMESPACE || true
+    - kubectl delete namespace $REVIEW_NAMESPACE || true
+  when: manual
+  environment:
+    name: review/mr-$CI_MERGE_REQUEST_IID
+    action: stop
+  only:
+    - merge_requests

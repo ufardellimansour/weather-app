@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "weather-app.fullname" . }}
+  labels:
+    {{- include "weather-app.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.config.port | quote }}
+  ENVIRONMENT: {{ .Values.environment | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}

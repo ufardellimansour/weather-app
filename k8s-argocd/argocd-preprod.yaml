@@ -6,11 +6,13 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: weather-app
+  # Utiliser "default" pour éviter les restrictions
+  # Ou "weather-app" si tu as créé le projet avec argocd-project.yaml
+  project: default
   
   source:
-    repoURL: https://github.com/ufardellimansour/weather-app.git  # Remplacez par votre repo
-    targetRevision: dev  # Branche develop pour preprod
+    repoURL: https://github.com/VOTRE-USERNAME/weather-app.git  # Remplacez par votre repo
+    targetRevision: develop  # Branche develop pour preprod
     path: k8s-argocd/overlays/preprod
   
   destination:

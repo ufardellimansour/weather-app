@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: weather-app-preprod
+  namespace: argocd
+spec:
+  # Pas de projet spécifié = utilise default automatiquement
+  source:
+    repoURL: https://github.com/VOTRE-USERNAME/weather-app.git  # ⬅️ CHANGE MOI
+    targetRevision: develop
+    path: k8s-argocd/overlays/preprod
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: weather-preprod
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
