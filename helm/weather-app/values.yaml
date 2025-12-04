@@ -1,0 +1,157 @@
+# Valeurs par défaut pour weather-app
+# Ceci est un fichier YAML-formatted.
+
+# Nombre de réplicas
+replicaCount: 2
+
+# Environnement (dev, preprod, production)
+environment: production
+
+image:
+  # Repository de l'image Docker
+  # Pour GitHub: ghcr.io/votre-username/weather-app
+  # Pour GitLab: registry.gitlab.com/votre-namespace/weather-app/backend
+  repository: ghcr.io/votre-username/weather-app
+  # Pull policy
+  pullPolicy: IfNotPresent
+  # Tag de l'image (override par CI/CD)
+  tag: "latest"
+
+# Secrets pour pull d'images privées
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Configuration de l'application
+config:
+  # Port de l'application
+  port: 5000
+  # Niveau de log
+  logLevel: INFO
+
+# Secrets de l'application
+secrets:
+  # Clé API OpenWeatherMap (à définir via CI/CD ou sealed secrets)
+  openweatherApiKey: "demo"
+  # Existant secret (si tu as déjà créé un secret manuellement)
+  existingSecret: ""
+
+serviceAccount:
+  # Crée un service account
+  create: true
+  # Annotations pour le service account
+  annotations: {}
+  # Nom du service account (généré si non spécifié)
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "5000"
+  prometheus.io/path: "/health"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: weather.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: weather-app-tls
+      hosts:
+        - weather.example.com
+
+# Ressources CPU/RAM
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Autoscaling horizontal
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Probes de santé
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Network Policy
+networkPolicy:
+  enabled: false
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: ingress-nginx
+  egress:
+    - to:
+      - namespaceSelector: {}
+      ports:
+      - protocol: TCP
+        port: 443
+      - protocol: TCP
+        port: 53
+      - protocol: UDP
+        port: 53

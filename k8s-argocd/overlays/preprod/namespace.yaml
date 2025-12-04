@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: weather-preprod
+  labels:
+    environment: preprod
+    app: weather-app

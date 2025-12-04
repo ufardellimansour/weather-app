@@ -1,0 +1,61 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: weather-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Projet pour l'application météo multi-environnements
+  
+  # Repositories Git autorisés
+  sourceRepos:
+    - '*'  # Autoriser tous les repos
+    # Ou spécifier uniquement le tien:
+    # - 'https://github.com/TON-USERNAME/weather-app.git'
+  
+  # Clusters et namespaces de destination autorisés
+  destinations:
+    # Preprod
+    - namespace: weather-preprod
+      server: https://kubernetes.default.svc
+    # Production
+    - namespace: weather-prod
+      server: https://kubernetes.default.svc
+    # Dev (si besoin)
+    - namespace: dev-weather-app
+      server: https://kubernetes.default.svc
+    # Wildcard pour tous les namespaces weather-* (optionnel)
+    - namespace: 'weather-*'
+      server: https://kubernetes.default.svc
+  
+  # Ressources cluster-scoped autorisées (namespace, CRDs, etc.)
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+  
+  # Ressources namespace-scoped autorisées
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  
+  # Roles et permissions
+  roles:
+    - name: developer
+      description: Développeur avec accès lecture/écriture
+      policies:
+        - p, proj:weather-app:developer, applications, get, weather-app/*, allow
+        - p, proj:weather-app:developer, applications, sync, weather-app/*, allow
+      groups:
+        - developers
+    
+    - name: admin
+      description: Admin avec accès complet
+      policies:
+        - p, proj:weather-app:admin, applications, *, weather-app/*, allow
+      groups:
+        - admins

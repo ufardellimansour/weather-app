@@ -1,0 +1,38 @@
+# Valeurs spécifiques pour PREPROD
+
+replicaCount: 1
+environment: preprod
+
+image:
+  repository: ghcr.io/votre-username/weather-app
+  pullPolicy: Always
+  tag: "latest"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+  hosts:
+    - host: weather-preprod.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: weather-app-preprod-tls
+      hosts:
+        - weather-preprod.example.com

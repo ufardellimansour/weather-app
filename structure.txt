@@ -1,0 +1,17 @@
+./Dockerfile
+./Makefile
+./QUICKSTART.md
+./README.md
+./app.py
+./argocd-app.yaml
+./docker-compose.yaml
+./k8s/configmap.yaml
+./k8s/deployment.yaml
+./k8s/ingress.yaml
+./k8s/kustomization.yaml
+./k8s/secret.yaml
+./k8s/service.yaml
+./requirements.txt
+./static/css/style.css
+./structure.txt
+./templates/index.html

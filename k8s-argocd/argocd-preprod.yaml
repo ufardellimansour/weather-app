@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: weather-app-preprod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Utiliser "default" pour éviter les restrictions
+  # Ou "weather-app" si tu as créé le projet avec argocd-project.yaml
+  project: default
+  
+  source:
+    repoURL: https://github.com/VOTRE-USERNAME/weather-app.git  # Remplacez par votre repo
+    targetRevision: develop  # Branche develop pour preprod
+    path: k8s-argocd/overlays/preprod
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: weather-preprod
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignoré car géré par HPA (si activé)

@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: weather-app-ingress
+  namespace: default
+  annotations:
+    # Pour nginx-ingress
+    kubernetes.io/ingress.class: nginx
+    # Pour les certificats TLS avec cert-manager (optionnel)
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  rules:
+  - host: weather.example.com  # Remplacez par votre domaine
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: weather-app-service
+            port:
+              number: 80
+  # Décommentez pour activer TLS
+  # tls:
+  # - hosts:
+  #   - weather.example.com
+  #   secretName: weather-app-tls
